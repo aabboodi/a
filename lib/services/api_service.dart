@@ -65,3 +65,89 @@ class ApiService {
     if (e.type == DioExceptionType.connectionError) {
       return Exception('لا يوجد اتصال بالإنترنت');
     }
+    if (e.response?.statusCode == 500) {
+      return Exception('خطأ في السيرفر');
+    }
+    
+    return Exception(e.response?.data['message'] ?? 'خطأ غير متوقع');
+  }
+  
+  Future<String?> _getToken() async {
+    final storage = FlutterSecureStorage();
+    return await storage.read(key: 'auth_token');
+  }
+  
+  void _handleUnauthorized() {
+    // إعادة توجيه لصفحة تسجيل الدخول
+    // يتم التعامل معها عبر الـ Provider
+  }
+}
+
+// Retry Interceptor مخصص
+class RetryInterceptor extends Interceptor {
+  final Dio dio;
+  final void Function(String) logPrint;
+  final int retries;
+  final List<Duration> retryDelays;
+  
+  RetryInterceptor({
+    required this.dio,
+    required this.logPrint,
+    this.retries = 3,
+    required this.retryDelays,
+  });
+  
+  @override
+  Future onError(DioException err, ErrorInterceptorHandler handler) async {
+    var extra = RetryOptions.fromExtra(err.requestOptions) ?? RetryOptions();
+    
+    if (extra.retries > 0 && _shouldRetry(err)) {
+      logPrint('Retrying request... (${extra.retries} attempts left)');
+      
+      extra = extra.copyWith(retries: extra.retries - 1);
+      err.requestOptions.extra = err.requestOptions.extra..addAll(extra.toExtra());
+      
+      // الانتظار قبل المحاولة التالية
+      final delayIndex = retries - extra.retries - 1;
+      final delay = delayIndex < retryDelays.length 
+        ? retryDelays[delayIndex] 
+        : retryDelays.last;
+      
+      await Future.delayed(delay);
+      
+      try {
+        final response = await dio.fetch(err.requestOptions);
+        return handler.resolve(response);
+      } catch (e) {
+        return super.onError(err, handler);
+      }
+    }
+    
+    return super.onError(err, handler);
+  }
+  
+  bool _shouldRetry(DioException err) {
+    return err.type == DioExceptionType.connectionTimeout ||
+           err.type == DioExceptionType.receiveTimeout ||
+           err.type == DioExceptionType.connectionError ||
+           (err.response?.statusCode ?? 0) >= 500;
+  }
+}
+
+class RetryOptions {
+  final int retries;
+  
+  const RetryOptions({this.retries = 3});
+  
+  factory RetryOptions.fromExtra(RequestOptions request) {
+    return request.extra['retryOptions'] as RetryOptions?;
+  }
+  
+  RetryOptions copyWith({int? retries}) {
+    return RetryOptions(retries: retries ?? this.retries);
+  }
+  
+  Map<String, dynamic> toExtra() {
+    return {'retryOptions': this};
+  }
+}

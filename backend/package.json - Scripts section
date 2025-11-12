@@ -1,0 +1,16 @@
+// backend/package.json - Scripts section
+{
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "test": "jest --coverage",
+    "test:watch": "jest --watch",
+    "lint": "eslint src/**/*.js",
+    "lint:fix": "eslint src/**/*.js --fix",
+    "db:seed": "node scripts/seed.js",
+    "db:backup": "node scripts/backup.js",
+    "db:restore": "node scripts/restore.js",
+    "logs:clean": "node scripts/clean-logs.js",
+    "deploy": "pm2 start ecosystem.config.js --env production"
+  }
+}
